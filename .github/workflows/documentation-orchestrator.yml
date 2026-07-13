@@ -2,7 +2,7 @@ name: Centralized Documentation Orchestrator
 
 on:
   schedule:
-    # Runs at 00:00 UTC every day
+    # Runs at 00:00 UTC every day and scans every repo it discovers/lists.
     - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
@@ -20,9 +20,19 @@ on:
           - 'gemini'
           - 'claude'
 
+permissions:
+  contents: read
+
+concurrency:
+  # Prevents two runs (e.g. a manual run overlapping the scheduled one) from
+  # racing on the same docs/readme-update branch (orchestrator.py force-pushes it).
+  group: documentation-orchestrator
+  cancel-in-progress: false
+
 jobs:
   run-orchestrator:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout Orchestrator Repo
@@ -31,7 +41,6 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          # python-year: 2024 # standard config
           python-version: '3.10'
           cache: 'pip'
 
@@ -46,7 +55,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          ARGS=""
+          ARGS="--auto-discover"
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
@@ -54,3 +63,5 @@ jobs:
             ARGS="$ARGS --provider ${{ github.event.inputs.provider }}"
           fi
           python orchestrator.py $ARGS
+          # To go back to the fixed repositories.json list instead of
+          # auto-discovery, just remove --auto-discover from ARGS above.
